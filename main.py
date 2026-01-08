@@ -10,9 +10,10 @@ if not TOKEN or not ADMIN_ID:
     print("Error: TOKEN or ADMIN_ID not found in Environment Variables!")
 
 bot = telebot.TeleBot(TOKEN)
-MAX_SIZE = 50 * 1024 * 1024
+MAX_SIZE = 50 * 1024 * 1024  # 50 MB Limit
 USERS_FILE = "users.txt"
 
+# --- دالة حفظ المستخدمين ---
 def save_user(chat_id):
     if not os.path.exists(USERS_FILE):
         with open(USERS_FILE, "w") as f: pass
@@ -21,7 +22,10 @@ def save_user(chat_id):
         users = f.read().splitlines()
         if str(chat_id) not in users:
             f.write(f"{chat_id}\n")
+            return True # مستخدم جديد
+    return False # مستخدم قديم
 
+# --- دالة جلب عدد المستخدمين ---
 def get_all_users():
     if not os.path.exists(USERS_FILE):
         return []
@@ -35,18 +39,20 @@ def human_readable(num):
     if num < 1000000: return f"{num/1000:.1f}K"
     return f"{num/1000000:.1f}M"
 
+# تشغيل سيرفر الإنعاش
 keep_alive()
 
+# --- أمر البداية (Start) ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    save_user(message.chat.id)
+    is_new = save_user(message.chat.id)
     
+    # 1. تجهيز اسم المستخدم
     user_name = message.from_user.first_name
-    if not user_name and message.from_user.username:
-        user_name = f"@{message.from_user.username}"
     if not user_name:
          user_name = "يا صديقي"
 
+    # 2. رسالة الترحيب
     welcome_text = (
         f"👋 **أهلاً بك {user_name}!** ❤️\n\n"
         "🤖 **أنا بوت التحميل الشامل**\n"
@@ -64,50 +70,73 @@ def send_welcome(message):
         "〰〰〰〰〰〰〰〰"
     )
     
+    # 3. إرسال الصورة والرسالة
     try:
         with open('start_image.jpg', 'rb') as photo:
              bot.send_photo(message.chat.id, photo, caption=welcome_text, parse_mode='Markdown')
     except FileNotFoundError:
          bot.reply_to(message, welcome_text, parse_mode='Markdown')
 
+    # 4. تنبيه الأدمن بدخول عضو جديد (كما طلبت)
+    if is_new and str(message.chat.id) != str(ADMIN_ID):
+        try:
+            users_count = len(get_all_users())
+            username_txt = f"@{message.from_user.username}" if message.from_user.username else "لا يوجد"
+            
+            alert_msg = (
+                f"🚨 **تم دخول شخص جديد للبوت!**\n"
+                f"----------------------------\n"
+                f"• **معلومات العضو:**\n\n"
+                f"• الاسم: {user_name}\n"
+                f"• المعرف: {username_txt}\n"
+                f"• الآيدي: `{message.chat.id}`\n"
+                f"----------------------------\n"
+                f"👥 **العدد الكلي للأعضاء: {users_count}**"
+            )
+            bot.send_message(ADMIN_ID, alert_msg, parse_mode='Markdown')
+        except:
+            pass # لو فشل الإرسال للأدمن ميعطلش البوت
+
+# --- أمر الإذاعة (Broadcast) ---
 @bot.message_handler(commands=['cast'])
 def broadcast_message(message):
     if str(message.chat.id) != str(ADMIN_ID):
-        bot.reply_to(message, "⛔ هذا الأمر للمطور فقط.")
-        return
+        return # تجاهل الأمر لو مش الأدمن
 
     msg_text = message.text.replace("/cast", "").strip()
     if not msg_text:
-        bot.reply_to(message, "⚠️ يرجى كتابة الرسالة بعد الأمر.\nمثال: `/cast تحديث جديد!`")
+        bot.reply_to(message, "⚠️ اكتب الرسالة بعد الأمر.\nمثال: `/cast تحديث جديد`")
         return
 
     users = get_all_users()
     sent_count = 0
     fail_count = 0
-
-    status_msg = bot.reply_to(message, f"⏳ جاري إرسال الإذاعة لـ {len(users)} مستخدم...")
+    
+    status_msg = bot.reply_to(message, f"⏳ يتم الإرسال لـ {len(users)} عضو...")
 
     for user_id in users:
         try:
-            bot.send_message(user_id, f"📢 **إعلان هام من المطور:**\n\n{msg_text}", parse_mode='Markdown')
+            bot.send_message(user_id, msg_text)
             sent_count += 1
-        except Exception:
+        except:
             fail_count += 1
             
-    bot.edit_message_text(f"✅ **تمت الإذاعة بنجاح!**\n\nتم الإرسال لـ: {sent_count}\nفشل الإرسال لـ: {fail_count}", message.chat.id, status_msg.message_id, parse_mode='Markdown')
+    bot.edit_message_text(f"✅ **تم الانتهاء!**\n\nوصلت لـ: {sent_count}\nفشلت لـ: {fail_count}", message.chat.id, status_msg.message_id, parse_mode='Markdown')
 
+# --- تحميل الفيديو ---
 @bot.message_handler(func=lambda message: True)
 def download_video(message):
     url = message.text.strip()
     
     if not url.startswith(('http://', 'https://')):
-         bot.reply_to(message, "⚠️ يرجى إرسال رابط صحيح يبدأ بـ http أو https")
+         bot.reply_to(message, "⚠️ يرجى إرسال رابط صحيح")
          return
 
-    status_msg = bot.reply_to(message, "⏳ **جاري الفحص والتجهيز...**", parse_mode='Markdown')
+    status_msg = bot.reply_to(message, "⏳ **جاري التحميل...**", parse_mode='Markdown')
     filename = None
 
     try:
+        # إعدادات التحميل (تمت إضافة الكوكيز هنا)
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
             'outtmpl': 'video_%(id)s.%(ext)s',
@@ -117,47 +146,49 @@ def download_video(message):
             'max_filesize': MAX_SIZE,
         }
 
+        # استخدام ملف الكوكيز لو موجود
+        if os.path.exists('cookies.txt'):
+            ydl_opts['cookiefile'] = 'cookies.txt'
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             try:
                 info = ydl.extract_info(url, download=False)
             except Exception as e:
-                raise Exception(f"فشل في استخراج معلومات الرابط: {str(e)}")
+                raise Exception("الرابط غير صالح أو الموقع محظور")
 
             fsize = info.get('filesize') or info.get('filesize_approx')
             if fsize and fsize > MAX_SIZE:
-                bot.edit_message_text(f"❌ **عذراً، الفيديو كبير جداً!**\n\nحجم الفيديو يتخطى 50 ميجا.\nالحجم المقدر: {round(fsize/(1024*1024), 2)} MB", message.chat.id, status_msg.message_id, parse_mode='Markdown')
+                bot.edit_message_text(f"❌ الفيديو مساحته أكبر من 50 ميجا ({round(fsize/(1024*1024), 2)} MB).", message.chat.id, status_msg.message_id)
                 return
             
-            title = info.get('title', 'فيديو بدون عنوان')
+            title = info.get('title', 'فيديو')
             uploader = info.get('uploader', 'غير معروف')
             views = human_readable(info.get('view_count'))
             likes = human_readable(info.get('like_count'))
 
+            # تم تعديل التنسيق وإزالة المارك داون لتجنب أخطاء فيسبوك
             caption_text = (
-                f"✅ {views} views · {likes} reactions | {title} | {uploader}\n"
-                f"👤 **By : Kareem Mohamed**\n"
-                f"🤖 @{bot.get_me().username}"
+                f"{title}\n\n"
+                f"👤 {uploader} | 👀 {views} | ❤️ {likes}\n"
+                f"----------------------\n"
+                f"🌟 By: Kareem Mohamed\n"
+                f"🤖 @kma_tbot" 
             )
             
-            bot.edit_message_text(f"⬇️ **جاري التحميل للسيرفر:**\n{title}", message.chat.id, status_msg.message_id)
+            bot.edit_message_text(f"⬇️ جاري الرفع: {title}", message.chat.id, status_msg.message_id)
             
             ydl.download([url])
             filename = ydl.prepare_filename(info)
 
-        bot.edit_message_text("🚀 **جاري الرفع إليك...**", message.chat.id, status_msg.message_id, parse_mode='Markdown')
+        bot.edit_message_text("🚀 جاري الإرسال...", message.chat.id, status_msg.message_id)
         
-        if os.path.getsize(filename) > MAX_SIZE:
-             bot.edit_message_text("❌ **خطأ غير متوقع:** الملف المحمل أكبر من 50 ميجا بعد التحميل.", message.chat.id, status_msg.message_id)
-             os.remove(filename)
-             return
-
         with open(filename, 'rb') as video:
             bot.send_video(
                 message.chat.id, 
                 video, 
                 caption=caption_text,
-                parse_mode='Markdown',
                 reply_to_message_id=message.message_id
+                # تم حذف parse_mode لحل مشكلة فيسبوك نهائياً
             )
 
         if os.path.exists(filename):
@@ -165,18 +196,16 @@ def download_video(message):
         bot.delete_message(message.chat.id, status_msg.message_id)
 
     except Exception as e:
-        error_message = str(e)
-        bot.edit_message_text("❌ **حدث خطأ أثناء المحاولة!**\n\n- قد يكون الرابط غير مدعوم.\n- أو الفيديو خاص/محذوف.\n- أو حدثت مشكلة في السيرفر.\n\n**تم إبلاغ المطور بالمشكلة.**", message.chat.id, status_msg.message_id, parse_mode='Markdown')
+        # تقرير الخطأ للأدمن
+        bot.edit_message_text("❌ حدث خطأ، تأكد من الرابط أو حاول لاحقاً.", message.chat.id, status_msg.message_id)
         
         if filename and os.path.exists(filename):
             os.remove(filename)
 
-        if ADMIN_ID and str(ADMIN_ID) == "6318333901":
+        if str(message.chat.id) != str(ADMIN_ID): # منبعتش الخطأ للأدمن لو هو اللي بيجرب
             try:
-                bot.send_message(ADMIN_ID, f"⚠️ **تقرير خطأ جديد!**\n\n👤 المستخدم: {message.from_user.first_name} (ID: {message.chat.id})\n🔗 الرابط: {url}\n\n📄 الخطأ:\n`{error_message}`", parse_mode='Markdown')
-            except:
-                print("Failed to send error report to admin")
+                bot.send_message(ADMIN_ID, f"⚠️ **خطأ جديد:**\n🔗 {url}\n📄 {str(e)}", parse_mode='Markdown')
+            except: pass
 
-print("Bot is running on Render...")
+print("Bot is running...")
 bot.infinity_polling()
-
