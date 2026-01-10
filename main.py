@@ -4,7 +4,6 @@ import os
 from telebot import types
 from flask import Flask
 from threading import Thread
-import random
 
 # ------------------- Web Server -------------------
 app = Flask('')
@@ -46,12 +45,11 @@ def get_users_count():
     with open(users_file, "r") as f:
         return len(f.read().splitlines())
 
-# ------------------- Start Command (الشكل الجديد) -------------------
+# ------------------- Start Command -------------------
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     save_user(message.from_user.id)
     
-    # النص تم تعديله وإزالة النجوم **
     welcome_text = (
         f"👋 أهلاً بك يا {message.from_user.first_name}! \n\n"
         "🤖 أنا بوت التحميل الشامل\n"
@@ -95,40 +93,34 @@ def handle_message(message):
         status_msg = bot.reply_to(message, "🔎 جاري جلب بيانات الفيديو...")
         
         try:
-            # إعدادات قوية لتجنب الحظر
+            # إعدادات عامة لجلب المعلومات
             ydl_opts = {
                 'quiet': True,
                 'no_warnings': True,
-                'cookiefile': 'cookies.txt', 
+                'ignoreerrors': True,
                 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'referer': 'https://www.google.com/',
-                'ignoreerrors': True
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(text, download=False)
             
-            # معالجة الخطأ لو المعلومات رجعت فاضية
             if not info:
-                bot.edit_message_text("❌ لم أتمكن من قراءة الرابط (قد يكون خاصاً أو محظوراً).", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
+                bot.edit_message_text("❌ لم أتمكن من قراءة الرابط.", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
                 return
 
             title = info.get('title', 'فيديو')
             thumbnail = info.get('thumbnail')
             
+            # أزرار الجودة (مبسطة لضمان التحميل)
             markup = types.InlineKeyboardMarkup(row_width=2)
-            btn_144 = types.InlineKeyboardButton("📱 144p", callback_data="q|144")
-            btn_360 = types.InlineKeyboardButton("📺 360p", callback_data="q|360")
-            btn_720 = types.InlineKeyboardButton("💿 720p", callback_data="q|720")
-            btn_audio = types.InlineKeyboardButton("🎵 MP3", callback_data="q|audio")
-            
-            markup.add(btn_144, btn_360)
-            markup.add(btn_720, btn_audio)
+            # زرار "تحميل مباشر" هو الأضمن لأنه بيختار المتوافق مع السيرفر
+            markup.add(types.InlineKeyboardButton("🎬 تحميل (أفضل جودة متاحة)", callback_data="q|best"))
+            markup.add(types.InlineKeyboardButton("🎵 تحميل صوت (MP3)", callback_data="q|audio"))
             
             if thumbnail:
-                bot.send_photo(message.chat.id, thumbnail, caption=f"🎬 {title}\n\n⬇️ اختر الجودة:", reply_to_message_id=message.message_id, reply_markup=markup)
+                bot.send_photo(message.chat.id, thumbnail, caption=f"🎬 {title}\n\n⬇️ اضغط للتحميل:", reply_to_message_id=message.message_id, reply_markup=markup)
             else:
-                bot.reply_to(message, f"🎬 {title}\n\n⬇️ اختر الجودة:", reply_markup=markup)
+                bot.reply_to(message, f"🎬 {title}\n\n⬇️ اضغط للتحميل:", reply_markup=markup)
             
             bot.delete_message(message.chat.id, status_msg.message_id)
 
@@ -140,11 +132,7 @@ def handle_message(message):
         msg = bot.reply_to(message, f"🔍 جاري البحث عن: {text}...")
         try:
             ydl_opts = {
-                'quiet': True, 
-                'default_search': 'ytsearch8', 
-                'extract_flat': True, 
-                'ignoreerrors': True,
-                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+                'quiet': True, 'default_search': 'ytsearch8', 'extract_flat': True, 'ignoreerrors': True
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(text, download=False)
@@ -179,7 +167,7 @@ def callback_query(call):
         try:
             if call.message.reply_to_message:
                 original_link = call.message.reply_to_message.text
-                start_download_quality(call.message, original_link, quality)
+                start_download_smart(call.message, original_link, quality)
             else:
                 bot.answer_callback_query(call.id, "❌ الرابط الأصلي مفقود.")
         except:
@@ -203,37 +191,34 @@ def callback_query(call):
         msg = bot.send_message(call.message.chat.id, "📝 أرسل الرسالة للإذاعة الآن:")
         bot.register_next_step_handler(msg, broadcast_msg)
 
-# ------------------- Download Logic -------------------
-def start_download_quality(message, link, quality):
-    bot.edit_message_caption(caption=f"⏳ جاري التحميل ({quality})...", chat_id=message.chat.id, message_id=message.message_id)
+# ------------------- Smart Download Logic (الحل الجذري) -------------------
+def start_download_smart(message, link, quality):
+    bot.edit_message_caption(caption=f"⏳ جاري التحميل...", chat_id=message.chat.id, message_id=message.message_id)
     
     try:
-        # إعدادات التحميل مع التمويه
+        # إعدادات خاصة لتفادي مشكلة الدمج (FFmpeg)
         ydl_opts = {
             'outtmpl': 'media/%(title)s.%(ext)s',
-            'cookiefile': 'cookies.txt', 
             'quiet': True,
             'max_filesize': 50*1024*1024,
+            # التمويه عشان فيسبوك وانستا
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'nocheckcertificate': True
         }
-
+        
+        # لو المستخدم عايز صوت
         if quality == "audio":
             ydl_opts['format'] = 'bestaudio/best'
-        elif quality == "144":
-            ydl_opts['format'] = 'bestvideo[height<=144]+bestaudio/best[height<=144]'
-        elif quality == "360":
-            ydl_opts['format'] = 'bestvideo[height<=360]+bestaudio/best[height<=360]'
-        elif quality == "720":
-            ydl_opts['format'] = 'bestvideo[height<=720]+bestaudio/best[height<=720]'
         else:
-             ydl_opts['format'] = 'best[ext=mp4]/best'
+            # هنا السر: بنقوله هات أفضل ملف فيديو "جاهز" (mp4) من غير ما تحتاج دمج
+            # ده بيحل مشكلة Requested format not available
+            ydl_opts['format'] = 'best[ext=mp4]/best'
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(link, download=True)
             filename = ydl.prepare_filename(info)
             title = info.get('title', 'Unknown')
-            caption = f"🎬 {title}\n💿 الجودة: {quality}\n\n👤 By: @kareemcv"
+            caption = f"🎬 {title}\n\n👤 By: @kareemcv"
 
             with open(filename, 'rb') as f:
                 if quality == "audio": 
@@ -244,8 +229,18 @@ def start_download_quality(message, link, quality):
             if os.path.exists(filename): os.remove(filename)
 
     except Exception as e:
-        # رسالة خطأ واضحة
-        bot.send_message(message.chat.id, f"❌ فشل التحميل.\nالسبب: {str(e)[:50]}...")
+        # لو فشل، بنحاول مرة أخيرة بأي صيغة تانية
+        try:
+             # محاولة إنقاذ أخيرة (Fallback)
+             ydl_opts['format'] = 'worst' # جودة قليلة بس المهم يحمل
+             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(link, download=True)
+                filename = ydl.prepare_filename(info)
+                with open(filename, 'rb') as f:
+                    bot.send_video(message.chat.id, f, caption="⚠️ تم التحميل بجودة منخفضة لعدم توفر صيغ أخرى.")
+                if os.path.exists(filename): os.remove(filename)
+        except:
+             bot.send_message(message.chat.id, f"❌ فشل التحميل تماماً. \nالسبب: السيرفر لا يدعم دمج الصيغ لهذا الفيديو.")
 
 # ------------------- Broadcast Logic -------------------
 def broadcast_msg(message):
