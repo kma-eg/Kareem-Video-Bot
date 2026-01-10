@@ -4,6 +4,7 @@ import os
 from telebot import types
 from flask import Flask
 from threading import Thread
+import random
 
 # ------------------- Web Server -------------------
 app = Flask('')
@@ -30,7 +31,7 @@ if not BOT_TOKEN:
 bot = telebot.TeleBot(BOT_TOKEN)
 users_file = "users.txt"
 
-# ------------------- User Management -------------------
+# ------------------- Helper Functions -------------------
 def save_user(user_id):
     if not os.path.exists(users_file):
         with open(users_file, "w") as f: pass
@@ -45,24 +46,28 @@ def get_users_count():
     with open(users_file, "r") as f:
         return len(f.read().splitlines())
 
-# ------------------- Start Command -------------------
+# ------------------- Start Command (الشكل الجديد) -------------------
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     save_user(message.from_user.id)
     
-    # Removed ** stars as requested
+    # النص تم تعديله وإزالة النجوم **
     welcome_text = (
         f"👋 أهلاً بك يا {message.from_user.first_name}! \n\n"
-        "✨ أنا بوت التحميل الشامل (النسخة المطورة) 🤖\n\n"
-        "🌟 مميزات البوت:\n"
-        "✅ اختيار الجودة (144p - 360p - 720p)\n"
-        "✅ تحميل صوت (MP3) بأعلى نقاء 🎵\n"
-        "✅ دعم يوتيوب، فيسبوك، تيك توك، إنستجرام\n\n"
-        "💡 كيف أعمل؟\n"
-        "1️⃣ أرسل الرابط مباشرة لاختيار الجودة.\n"
-        "2️⃣ أرسل اسم الفيديو للبحث عنه.\n\n"
+        "🤖 أنا بوت التحميل الشامل\n"
+        "أقدر أساعدك تحمل فيديوهات من أغلب\n"
+        "المنصات بجودة عالية:\n\n"
+        "✅ يوتيوب (Youtube)\n"
+        "✅ تيك توك (TikTok) - بدون علامة مائية\n"
+        "✅ إنستجرام (Reels & Posts)\n"
+        "✅ فيسبوك (Facebook)\n\n"
+        "💡 طريقة الاستخدام:\n"
+        "1️⃣ أرسل الرابط للتحميل المباشر\n"
+        "2️⃣ أرسل اسم الفيديو للبحث عنه في يوتيوب\n\n"
         "〰〰〰〰〰〰〰〰〰\n"
-        "👨‍💻 المطور: @kareemcv"
+        "👨‍💻 تطوير وبرمجة:\n"
+        "🌟 المطور : (كريم محمد)\n"
+        "للتواصل : (@kareemcv)"
     )
 
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -85,19 +90,32 @@ def send_welcome(message):
 def handle_message(message):
     text = message.text
     
-    # If Link -> Show Thumbnail + Buttons
+    # --- Link Handler ---
     if "http" in text:
         status_msg = bot.reply_to(message, "🔎 جاري جلب بيانات الفيديو...")
         
         try:
-            ydl_opts = {'quiet': True, 'cookiefile': 'cookies.txt', 'ignoreerrors': True}
+            # إعدادات قوية لتجنب الحظر
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'cookiefile': 'cookies.txt', 
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'referer': 'https://www.google.com/',
+                'ignoreerrors': True
+            }
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(text, download=False)
-                
-            title = info.get('title', 'Video')
+            
+            # معالجة الخطأ لو المعلومات رجعت فاضية
+            if not info:
+                bot.edit_message_text("❌ لم أتمكن من قراءة الرابط (قد يكون خاصاً أو محظوراً).", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
+                return
+
+            title = info.get('title', 'فيديو')
             thumbnail = info.get('thumbnail')
             
-            # Create Quality Buttons
             markup = types.InlineKeyboardMarkup(row_width=2)
             btn_144 = types.InlineKeyboardButton("📱 144p", callback_data="q|144")
             btn_360 = types.InlineKeyboardButton("📺 360p", callback_data="q|360")
@@ -107,24 +125,26 @@ def handle_message(message):
             markup.add(btn_144, btn_360)
             markup.add(btn_720, btn_audio)
             
-            # Send Photo with Buttons (Reply to original link)
             if thumbnail:
                 bot.send_photo(message.chat.id, thumbnail, caption=f"🎬 {title}\n\n⬇️ اختر الجودة:", reply_to_message_id=message.message_id, reply_markup=markup)
             else:
                 bot.reply_to(message, f"🎬 {title}\n\n⬇️ اختر الجودة:", reply_markup=markup)
             
-            # Delete "Searching" message
             bot.delete_message(message.chat.id, status_msg.message_id)
 
         except Exception as e:
-            bot.edit_message_text(f"❌ خطأ: لم أتمكن من جلب البيانات. \n{str(e)}", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
+            bot.edit_message_text(f"❌ خطأ: {str(e)}", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
         
-    # If Text -> Search
+    # --- Search Handler ---
     else:
         msg = bot.reply_to(message, f"🔍 جاري البحث عن: {text}...")
         try:
             ydl_opts = {
-                'quiet': True, 'default_search': 'ytsearch8', 'extract_flat': True, 'ignoreerrors': True
+                'quiet': True, 
+                'default_search': 'ytsearch8', 
+                'extract_flat': True, 
+                'ignoreerrors': True,
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(text, download=False)
@@ -147,29 +167,24 @@ def handle_message(message):
 def callback_query(call):
     data = call.data
     
-    # Selection from Search
     if data.startswith("sel|"):
         vid_id = data.split("|")[1]
         link = f"https://youtu.be/{vid_id}"
-        # Trigger the link handler logic manually
         call.message.text = link
         handle_message(call.message)
         bot.delete_message(call.message.chat.id, call.message.message_id)
 
-    # Quality Selection
     elif data.startswith("q|"):
         quality = data.split("|")[1]
         try:
-            # Important: Get the link from the message the PHOTO replied to
             if call.message.reply_to_message:
                 original_link = call.message.reply_to_message.text
                 start_download_quality(call.message, original_link, quality)
             else:
                 bot.answer_callback_query(call.id, "❌ الرابط الأصلي مفقود.")
         except:
-            bot.answer_callback_query(call.id, "❌ حدث خطأ، حاول مجدداً.")
+            bot.answer_callback_query(call.id, "❌ حدث خطأ.")
 
-    # Admin Logic
     elif data == "admin_home":
         if str(call.from_user.id).strip() == str(ADMIN_ID).strip():
             markup = types.InlineKeyboardMarkup(row_width=2)
@@ -193,11 +208,14 @@ def start_download_quality(message, link, quality):
     bot.edit_message_caption(caption=f"⏳ جاري التحميل ({quality})...", chat_id=message.chat.id, message_id=message.message_id)
     
     try:
+        # إعدادات التحميل مع التمويه
         ydl_opts = {
             'outtmpl': 'media/%(title)s.%(ext)s',
             'cookiefile': 'cookies.txt', 
             'quiet': True,
-            'max_filesize': 50*1024*1024
+            'max_filesize': 50*1024*1024,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'nocheckcertificate': True
         }
 
         if quality == "audio":
@@ -226,11 +244,8 @@ def start_download_quality(message, link, quality):
             if os.path.exists(filename): os.remove(filename)
 
     except Exception as e:
-        err_msg = str(e)
-        if "File is larger than" in err_msg:
-             bot.send_message(message.chat.id, "❌ الملف أكبر من 50 ميجا! حاول اختيار جودة أقل.")
-        else:
-             bot.send_message(message.chat.id, "❌ فشل التحميل.")
+        # رسالة خطأ واضحة
+        bot.send_message(message.chat.id, f"❌ فشل التحميل.\nالسبب: {str(e)[:50]}...")
 
 # ------------------- Broadcast Logic -------------------
 def broadcast_msg(message):
