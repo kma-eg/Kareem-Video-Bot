@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Video Downloader</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            background-color: #1c1c1e; /* لون خلفية داكن */
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .card {
+            background-color: #2c2c2e;
+            width: 100%;
+            max-width: 400px;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: #32d74b; /* أخضر نيون */
+            font-size: 24px;
+        }
+
+        p { color: #8e8e93; font-size: 14px; margin-bottom: 25px; }
+
+        input {
+            width: 100%;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #3a3a3c;
+            background-color: #1c1c1e;
+            color: white;
+            font-size: 16px;
+            outline: none;
+            box-sizing: border-box;
+            margin-bottom: 20px;
+            text-align: left;
+            direction: ltr; /* عشان الرابط يظهر صح */
+        }
+
+        input:focus { border-color: #32d74b; }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(90deg, #32d74b, #2da83e);
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        button:active { transform: scale(0.98); }
+
+        .status {
+            margin-top: 20px;
+            font-size: 14px;
+            min-height: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>📥 تحميل فيديو</h2>
+        <p>انسخ رابط الفيديو (تيك توك، انستا، فيسبوك) وضعه هنا:</p>
+        
+        <input type="text" id="urlInput" placeholder="https://example.com/video...">
+        
+        <button onclick="submitLink()">🚀 بدء التحميل</button>
+        
+        <div class="status" id="statusMsg"></div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // يفتح التطبيق بملء الشاشة
+
+        function submitLink() {
+            const url = document.getElementById('urlInput').value;
+            const status = document.getElementById('statusMsg');
+            const btn = document.querySelector('button');
+
+            if (!url) {
+                status.style.color = '#ff453a';
+                status.innerText = "⚠️ يرجى وضع رابط صحيح!";
+                return;
+            }
+
+            status.style.color = '#ffd60a';
+            status.innerText = "⏳ جاري الاتصال بالبوت...";
+            btn.disabled = true;
+            btn.style.opacity = "0.7";
+
+            // إرسال البيانات للسيرفر (Python)
+            fetch('/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    url: url,
+                    user_id: tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : null
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    status.style.color = '#32d74b';
+                    status.innerText = "✅ تم الاستلام! سيصلك الفيديو في الشات.";
+                    setTimeout(() => tg.close(), 2000); // يقفل النافذة بعد ثانيتين
+                } else if (data.status === 'maintenance') {
+                    status.style.color = '#ff9f0a';
+                    status.innerText = "⚠️ " + data.msg;
+                    btn.disabled = false;
+                    btn.style.opacity = "1";
+                } else {
+                    status.style.color = '#ff453a';
+                    status.innerText = "❌ حدث خطأ، حاول مرة أخرى.";
+                    btn.disabled = false;
+                    btn.style.opacity = "1";
+                }
+            })
+            .catch(err => {
+                status.style.color = '#ff453a';
+                status.innerText = "❌ خطأ في الاتصال بالسيرفر.";
+                btn.disabled = false;
+                btn.style.opacity = "1";
+            });
+        }
+    </script>
+
+</body>
+</html>
