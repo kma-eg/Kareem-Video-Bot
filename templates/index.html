@@ -2,93 +2,227 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Video Downloader</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
     <style>
+        /* إعدادات الصفحة الأساسية */
         body {
-            background-color: #121212;
-            color: white;
-            font-family: sans-serif;
+            margin: 0;
+            padding: 0;
+            font-family: 'Cairo', sans-serif;
+            background: linear-gradient(135deg, #1e1e2f 0%, #0f0c29 100%);
+            color: #fff;
+            height: 100vh;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
-            margin: 0;
+            overflow: hidden;
+        }
+
+        /* الكارت الزجاجي */
+        .container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 25px;
+            padding: 30px 20px;
+            width: 85%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        /* العنوان والأيقونة */
+        .header-icon {
+            font-size: 50px;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #ff00cc, #333399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        h2 { margin: 0 0 10px; font-weight: 700; font-size: 24px; }
+        p { color: #aaa; font-size: 14px; margin-bottom: 25px; }
+
+        /* أيقونات المنصات */
+        .platforms {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .platforms i {
+            font-size: 20px;
+            color: #fff;
+            opacity: 0.7;
+            transition: 0.3s;
+        }
+        .platforms i:hover { transform: scale(1.2); opacity: 1; color: #ff00cc; }
+
+        /* حقل الإدخال */
+        .input-group {
+            position: relative;
+            margin-bottom: 25px;
         }
         input {
-            width: 80%;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 10px;
-            border: none;
-            text-align: center;
-        }
-        button {
-            padding: 15px 30px;
-            background-color: #28a745;
+            width: 100%;
+            padding: 15px 15px 15px 45px; /* مسافة للأيقونة */
+            border-radius: 15px;
+            border: 2px solid rgba(255,255,255,0.1);
+            background: rgba(0,0,0,0.2);
             color: white;
-            border: none;
-            border-radius: 10px;
             font-size: 16px;
-            cursor: pointer;
+            font-family: 'Cairo', sans-serif;
+            outline: none;
+            box-sizing: border-box;
+            transition: 0.3s;
         }
+        input:focus {
+            border-color: #ff00cc;
+            box-shadow: 0 0 10px rgba(255, 0, 204, 0.2);
+        }
+        .input-icon {
+            position: absolute;
+            top: 50%;
+            right: 15px;
+            transform: translateY(-50%);
+            color: #888;
+        }
+
+        /* زر التحميل */
+        button {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 15px;
+            background: linear-gradient(90deg, #ff00cc, #333399);
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            font-family: 'Cairo', sans-serif;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255, 0, 204, 0.4);
+            transition: 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        button:active { transform: scale(0.95); }
+        button:hover { box-shadow: 0 6px 20px rgba(255, 0, 204, 0.6); }
+
+        /* حالة التحميل */
         #status {
             margin-top: 20px;
-            color: #ffc107;
+            font-size: 14px;
+            min-height: 20px;
+            font-weight: bold;
+        }
+
+        /* أنيميشن */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
 <body>
 
-    <h3>ضع الرابط هنا</h3>
-    <input type="text" id="linkInput" placeholder="https://...">
-    <button onclick="sendData()">بدء التحميل</button>
-    <div id="status"></div>
+    <div class="container">
+        <div class="header-icon">
+            <i class="fas fa-cloud-download-alt"></i>
+        </div>
+        
+        <h2>تحميل سريع</h2>
+        <p>قم بلصق الرابط من أي منصة وسنقوم بالباقي</p>
+
+        <div class="platforms">
+            <i class="fab fa-youtube"></i>
+            <i class="fab fa-facebook"></i>
+            <i class="fab fa-instagram"></i>
+            <i class="fab fa-tiktok"></i>
+        </div>
+
+        <div class="input-group">
+            <i class="fas fa-link input-icon"></i>
+            <input type="text" id="linkInput" placeholder="الصق الرابط هنا...">
+        </div>
+
+        <button onclick="sendData()" id="downloadBtn">
+            <span>بدء التحميل</span>
+            <i class="fas fa-rocket"></i>
+        </button>
+
+        <div id="status"></div>
+    </div>
 
     <script>
         const tg = window.Telegram.WebApp;
-        tg.expand();
+        tg.expand(); // ملء الشاشة
 
         function sendData() {
             const link = document.getElementById("linkInput").value;
             const statusDiv = document.getElementById("status");
+            const btn = document.getElementById("downloadBtn");
             const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : null;
 
+            // تحقق بسيط
             if (!link) {
-                statusDiv.innerText = "يرجى وضع رابط!";
+                statusDiv.innerText = "⚠️ من فضلك ضع رابطاً أولاً";
+                statusDiv.style.color = "#ff4d4d";
+                shakeInput();
                 return;
             }
 
-            statusDiv.innerText = "جاري الإرسال للبوت...";
+            // تغيير حالة الزر أثناء التحميل
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
+            statusDiv.innerText = "";
 
             fetch('/submit', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    url: link,
-                    user_id: userId
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: link, user_id: userId })
             })
             .then(response => response.json())
             .then(data => {
                 if(data.status === "ok") {
-                    statusDiv.innerText = "تم الإرسال! تفقد البوت الآن.";
-                    statusDiv.style.color = "#28a745";
-                    setTimeout(() => tg.close(), 1000);
+                    statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> تم الإرسال بنجاح!';
+                    statusDiv.style.color = "#00e676";
+                    btn.style.background = "#00e676";
+                    setTimeout(() => tg.close(), 1500);
+                } else if (data.status === "maintenance") {
+                    statusDiv.innerText = "⚠️ " + data.msg;
+                    statusDiv.style.color = "#ffcc00";
+                    resetBtn();
                 } else {
-                    statusDiv.innerText = data.msg || "حدث خطأ";
-                    statusDiv.style.color = "red";
+                    statusDiv.innerText = "❌ حدث خطأ غير متوقع";
+                    statusDiv.style.color = "#ff4d4d";
+                    resetBtn();
                 }
             })
             .catch(error => {
-                statusDiv.innerText = "خطأ في الاتصال";
-                statusDiv.style.color = "red";
+                statusDiv.innerText = "❌ خطأ في الاتصال";
+                statusDiv.style.color = "#ff4d4d";
+                resetBtn();
             });
         }
+
+        function resetBtn() {
+            const btn = document.getElementById("downloadBtn");
+            btn.disabled = false;
+            btn.innerHTML = '<span>بدء التحميل</span> <i class="fas fa-rocket"></i>';
+        }
+
+        function shakeInput() {
+            const input = document.getElementById("linkInput");
+            input.style.borderColor = "#ff4d4d";
+            setTimeout(() => input.style.borderColor = "rgba(255,255,255,0.1)", 500);
+        }
     </script>
-</body>
-</html>
