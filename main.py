@@ -3,15 +3,35 @@ import yt_dlp
 import os
 import random
 from telebot import types
-from flask import Flask
+from flask import Flask, request, jsonify, render_template
 from threading import Thread
 
-# --- 1. إعداد السيرفر ---
-app = Flask('')
+# --- 1. إعداد السيرفر (Flask Web App) ---
+# template_folder='templates' بيعرفه مكان ملف الـ HTML
+app = Flask('', template_folder='templates')
 
 @app.route('/')
 def home():
-    return "<b>Bot is running... 🚀</b>"
+    # دي الصفحة اللي هتفتح لما تدوس على الزرار
+    return render_template('index.html')
+
+@app.route('/submit', methods=['POST'])
+def receive_link():
+    data = request.json
+    url = data.get('url')
+    user_id = data.get('user_id')
+
+    if not user_id:
+        return jsonify({'status': 'error', 'msg': 'User ID missing'})
+
+    # فحص الصيانة قبل ما يبدأ
+    if ("youtube.com" in url or "youtu.be" in url) and MAINTENANCE_STATUS['youtube']:
+        return jsonify({'status': 'maintenance', 'msg': 'يوتيوب في الصيانة حالياً ⚠️'})
+
+    # تشغيل التحميل في الخلفية (عشان الموقع ميهنجش)
+    Thread(target=process_download, args=(user_id, url)).start()
+    
+    return jsonify({'status': 'ok'})
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -20,9 +40,11 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# --- 2. المتغيرات والتوكن ---
+# --- 2. إعدادات البوت ---
 BOT_TOKEN = os.environ.get('TOKEN')
 ADMIN_ID = os.environ.get('ADMIN_ID')
+# 🔗 رابط موقعك على ريندر (اللي أنت بعته)
+APP_URL = "https://kareem-video-bot.onrender.com"
 
 MAINTENANCE_STATUS = {
     'youtube': True,
@@ -38,7 +60,6 @@ bot = telebot.TeleBot(BOT_TOKEN)
 users_file = "users.txt"
 channel_file = "force_sub.txt"
 
-# فلتر الحماية
 BLOCKED_KEYWORDS = [
     "xnxx", "pornhub", "xvideos", "sex", "xxx", "nude", "pussy", 
     "dick", "cock", "boobs", "hentai", "milf", "sharmota", "neek", 
@@ -46,23 +67,19 @@ BLOCKED_KEYWORDS = [
     "toz", "kuss"
 ]
 
-# 🔥 الرسائل الحماسية (الجزء اللي كان ناقص)
 SUCCESS_MSGS = [
-    "🚀 عاش! تم قفش الرابط بنجاح!",
-    "🫡 طلبك أوامر، ثواني ويكون عندك...",
-    "📦 جاري تغليف الطلب... استعد!",
-    "🔥 البوت شغال يا وحش... لحظة واحدة!",
-    "🎉 ولا يهمك، جبنالك الرابط في ثانية!",
+    "🚀 عاش! الرابط وصل...",
+    "📦 جاري تجهيز طلبك...",
+    "🔥 ثواني ويكون عندك...",
     "😎 انت تؤمر.. جاري التحميل..."
 ]
 
-# --- 3. الدوال المساعدة ---
+# --- 3. دوال المعالجة والتحميل ---
 
 def is_safe_content(text):
     text = text.lower()
     for word in BLOCKED_KEYWORDS:
-        if word in text:
-            return False
+        if word in text: return False
     return True
 
 def save_and_notify_admin(message):
@@ -72,27 +89,15 @@ def save_and_notify_admin(message):
     
     if not os.path.exists(users_file):
         with open(users_file, "w") as f: pass
-    
     with open(users_file, "r") as f:
         users = f.read().splitlines()
-    
     if user_id not in users:
         with open(users_file, "a") as f:
             f.write(user_id + "\n")
-        
         if ADMIN_ID:
-            msg = (
-                f"🚀 مستخدم جديد انضم للبوت!\n\n"
-                f"👤 الاسم: {first_name}\n"
-                f"📧 اليوزر: @{username}\n"
-                f"🆔 الأيدي: `{user_id}`"
-            )
             try:
-                bot.send_message(ADMIN_ID, msg, parse_mode="Markdown")
-            except:
-                pass
-        return True
-    return False
+                bot.send_message(ADMIN_ID, f"🚀 **مستخدم جديد:**\n{first_name} (@{username})")
+            except: pass
 
 def check_sub(user_id):
     if not os.path.exists(channel_file): return True
@@ -104,7 +109,46 @@ def check_sub(user_id):
     except: return True
     return False
 
-# --- 4. أوامر البوت ---
+# 🔥 دالة التحميل الخلفية (بتشتغل لما الويب يبعت رابط)
+def process_download(chat_id, url):
+    if not is_safe_content(url):
+        bot.send_message(chat_id, "🚫 **الرابط يحتوي على محتوى محظور!**")
+        return
+
+    # رسالة "جاري التحميل" في الشات
+    msg = bot.send_message(chat_id, f"🔎 **وصلني الرابط:**\n{url}\n\n⏳ جاري المعالجة...")
+
+    try:
+        ydl_opts = {
+            'outtmpl': 'media/%(title)s.%(ext)s',
+            'quiet': True,
+            'max_filesize': 50*1024*1024,
+            'nocheckcertificate': True,
+            'format': 'best[ext=mp4]/best' # تحميل أفضل جودة متاحة تلقائياً
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            caption = f"✅ @kareemcv"
+
+            # إرسال الملف
+            with open(filename, 'rb') as f:
+                # لو صورة
+                if filename.lower().endswith(('.jpg', '.png', '.webp')):
+                    bot.send_photo(chat_id, f, caption=caption)
+                # لو فيديو
+                else:
+                    bot.send_video(chat_id, f, caption=caption, supports_streaming=True)
+            
+            if os.path.exists(filename): os.remove(filename)
+            bot.delete_message(chat_id, msg.message_id)
+
+    except Exception as e:
+        bot.edit_message_text(f"❌ فشل التحميل: {str(e)}", chat_id=chat_id, message_id=msg.message_id)
+
+
+# --- 4. أوامر البوت (والزرار السحري) ---
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -112,27 +156,18 @@ def send_welcome(message):
     
     welcome_text = (
         f"أهلاً بك يا {message.from_user.first_name}! 👋\n\n"
-        "🤖 أنا بوت التحميل الشامل\n"
-        "أقدر أساعدك تحمل فيديوهات من أغلب\n"
-        "المنصات بجودة عالية:\n\n"
-        "1 يوتيوب (Youtube) ⚠️ (صيانة)\n"
-        "2 تيك توك (TikTok) - بدون علامة مائية ✅\n"
-        "3 إنستجرام (Reels & Posts) ✅\n"
-        "4 فيسبوك (Facebook) ✅\n\n"
-        "💡  طريقة الاستخدام:\n"
-        "1 أرسل الرابط للتحميل المباشر\n"
-        "2 أرسل اسم الفيديو للبحث (يوتيوب فقط)\n\n"
-        "〰〰〰〰〰〰〰〰〰\n"
-        "👨‍💻 المطور: @kareemcv"
+        "🚀 **لتحميل الفيديوهات بشكل أسرع وأشيك:**\n"
+        "اضغط على الزر بالأسفل لفتح نافذة التحميل 👇"
     )
 
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(types.InlineKeyboardButton("📢 قناة المطور", url="https://t.me/+8o0uI_JLmYwwZWJk"))
+    # هنا بنعمل زرار الـ Web App اللي بيفتح الموقع بتاعك
+    markup = types.InlineKeyboardMarkup()
+    web_app_info = types.WebAppInfo(APP_URL) # ده رابط ريندر اللي حطيناه فوق
     
-    current_user = str(message.from_user.id).strip()
-    admin_clean = str(ADMIN_ID).strip() if ADMIN_ID else ""
-    if admin_clean and current_user == admin_clean:
-        markup.add(types.InlineKeyboardButton("👮‍♂️ لوحة التحكم", callback_data="admin_main"))
+    # الزرار اللي زي "بدء اللعبة"
+    markup.add(types.InlineKeyboardButton(text="📱 اضغط للتحميل (Web App)", web_app=web_app_info))
+    
+    markup.add(types.InlineKeyboardButton("📢 قناة المطور", url="https://t.me/+8o0uI_JLmYwwZWJk"))
 
     try:
         with open('start_image.jpg', 'rb') as photo:
@@ -140,193 +175,14 @@ def send_welcome(message):
     except:
         bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
+
+# استقبال الروابط العادية (للي لسه عايز يبعت في الشات)
 @bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    user_text = message.text
-    user_id = message.from_user.id
-
-    # 1. الحماية
-    if not is_safe_content(user_text):
-        bot.reply_to(message, "🚫 محتوى محظور!")
-        return
-
-    # 2. الاشتراك
-    if not check_sub(user_id):
-        bot.reply_to(message, "⚠️ يجب الاشتراك في القناة أولاً.")
-        return
-
-    # --- معالجة الرابط ---
-    if "http" in user_text:
-        # صيانة يوتيوب
-        if ("youtube.com" in user_text or "youtu.be" in user_text) and MAINTENANCE_STATUS['youtube']:
-            bot.reply_to(message, "⚠️ يوتيوب في الصيانة حالياً.")
-            return
-
-        status_msg = bot.reply_to(message, "🔎 جاري الفحص...")
-        
-        try:
-            ydl_opts = {'quiet': True, 'no_warnings': True, 'ignoreerrors': True, 'nocheckcertificate': True}
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(user_text, download=False)
-            
-            if not info:
-                bot.edit_message_text("❌ الرابط لا يعمل أو خاص.", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
-                return
-
-            title = info.get('title', 'Link')
-            thumbnail = info.get('thumbnail')
-            duration = info.get('duration') # مدة الفيديو
-            linked_title = f"[{title}]({user_text})"
-            
-            # 🔥 اختيار رسالة حماسية عشوائية
-            motivational_msg = random.choice(SUCCESS_MSGS)
-
-            # === [الذكاء الاصطناعي هنا] ===
-            
-            if duration and duration > 0:
-                # -- حالة الفيديو (عرض القائمة) --
-                markup = types.InlineKeyboardMarkup(row_width=2)
-                # الجودات المطلوبة
-                markup.add(
-                    types.InlineKeyboardButton("🎥 720p", callback_data="dl|720"),
-                    types.InlineKeyboardButton("🎥 480p", callback_data="dl|480")
-                )
-                markup.add(
-                    types.InlineKeyboardButton("🎥 360p", callback_data="dl|360"),
-                    types.InlineKeyboardButton("🎥 240p", callback_data="dl|240")
-                )
-                markup.add(
-                    types.InlineKeyboardButton("🎥 144p", callback_data="dl|144"),
-                    types.InlineKeyboardButton("🎵 Audio", callback_data="dl|audio")
-                )
-                markup.add(types.InlineKeyboardButton("❌ إلغاء", callback_data="cancel"))
-
-                bot.delete_message(message.chat.id, status_msg.message_id)
-                
-                # الكابشن بالحماس 🔥
-                caption_text = f"🎬 {linked_title}\n\n{motivational_msg}\n👇 اختر الجودة:"
-                
-                if thumbnail:
-                    bot.send_photo(message.chat.id, thumbnail, caption=caption_text, parse_mode="Markdown", reply_markup=markup)
-                else:
-                    bot.send_message(message.chat.id, caption_text, parse_mode="Markdown", reply_markup=markup)
-            
-            else:
-                # -- حالة الصور (تحميل مباشر) --
-                bot.edit_message_text(f"{motivational_msg}\n🖼️ جاري تحميل الصور...", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
-                
-                # تحميل الصور
-                ydl_opts_img = {
-                    'outtmpl': 'media/%(title)s.%(ext)s',
-                    'quiet': True,
-                    'max_filesize': 50*1024*1024,
-                    'nocheckcertificate': True
-                }
-                with yt_dlp.YoutubeDL(ydl_opts_img) as ydl_img:
-                    info_img = ydl_img.extract_info(user_text, download=True)
-                    filename = ydl_img.prepare_filename(info_img)
-                    
-                    caption = f"✅ @kareemcv"
-                    with open(filename, 'rb') as f:
-                        bot.send_photo(message.chat.id, f, caption=caption)
-                    
-                    if os.path.exists(filename): os.remove(filename)
-                    bot.delete_message(message.chat.id, status_msg.message_id)
-
-        except Exception as e:
-            # لو حصل خطأ
-            bot.edit_message_text(f"❌ فشل التحميل (تأكد أن الرابط عام).", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
-
-    # --- معالجة البحث ---
-    else:
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        yt_text = "🔴 يوتيوب (صيانة)" if MAINTENANCE_STATUS['youtube'] else "✅ يوتيوب"
-        markup.add(types.InlineKeyboardButton(yt_text, callback_data="search_yt"))
-        
-        bot.reply_to(message, f"🧐 البحث عن: {user_text}\n(البحث متاح لليوتيوب فقط حالياً)", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: True)
-def callback_query(call):
-    data = call.data
-    
-    if data == "cancel":
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-        return
-
-    if data.startswith("dl|"):
-        mode = data.split("|")[1]
-        
-        # استخراج الرابط
-        original_url = ""
-        if call.message.reply_to_message:
-            original_url = call.message.reply_to_message.text
-        elif call.message.caption_entities:
-            for entity in call.message.caption_entities:
-                if entity.type == "text_link":
-                    original_url = entity.url
-                    break
-        
-        if not original_url:
-             if call.message.caption:
-                 import re
-                 urls = re.findall(r'(https?://[^\s]+)', call.message.caption)
-                 if urls: original_url = urls[0]
-
-        if not original_url:
-            bot.answer_callback_query(call.id, "❌ الرابط مفقود.")
-            return
-        
-        bot.edit_message_caption(caption=f"🚀 جاري التحميل ({mode})...", chat_id=call.message.chat.id, message_id=call.message.message_id)
-        
-        try:
-            ydl_opts = {
-                'outtmpl': 'media/%(title)s.%(ext)s',
-                'quiet': True,
-                'max_filesize': 50*1024*1024,
-                'nocheckcertificate': True
-            }
-            
-            # ضبط الجودة حسب الاختيار
-            if mode == "audio":
-                ydl_opts['format'] = 'bestaudio/best'
-            elif mode == "720":
-                ydl_opts['format'] = 'best[height<=720][ext=mp4]/best[ext=mp4]/best'
-            elif mode == "480":
-                ydl_opts['format'] = 'best[height<=480][ext=mp4]/best[ext=mp4]/best'
-            elif mode == "360":
-                ydl_opts['format'] = 'best[height<=360][ext=mp4]/best[ext=mp4]/best'
-            elif mode == "240":
-                ydl_opts['format'] = 'best[height<=240][ext=mp4]/best[ext=mp4]/best'
-            elif mode == "144":
-                ydl_opts['format'] = 'best[height<=144][ext=mp4]/best[ext=mp4]/best'
-            else:
-                ydl_opts['format'] = 'best[ext=mp4]/best'
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(original_url, download=True)
-                filename = ydl.prepare_filename(info)
-                caption = f"✅ @kma_tbot "
-                
-                # إرسال الملف (فيديو أو صوت)
-                with open(filename, 'rb') as f:
-                    if mode == "audio":
-                        bot.send_audio(call.message.chat.id, f, caption=caption)
-                    else:
-                        bot.send_video(call.message.chat.id, f, caption=caption, supports_streaming=True)
-                
-                if os.path.exists(filename): os.remove(filename)
-                
-                # حذف القائمة بعد التحميل
-                bot.delete_message(call.message.chat.id, call.message.message_id)
-
-        except Exception as e:
-            bot.send_message(call.message.chat.id, "❌ فشل التحميل.")
-
-    elif data == "search_yt":
-         bot.answer_callback_query(call.id, "⚠️ يوتيوب مغلق للصيانة!", show_alert=True)
+def handle_text(message):
+    # نفس الكود القديم عشان لو حد بعت الرابط في الشات مباشرة يشتغل برضه
+    if "http" in message.text:
+        Thread(target=process_download, args=(message.chat.id, message.text)).start()
 
 if __name__ == "__main__":
     keep_alive()
-
     bot.infinity_polling()
