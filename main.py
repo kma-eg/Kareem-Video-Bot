@@ -10,7 +10,7 @@ app = Flask('', template_folder='templates')
 
 @app.route('/')
 def home():
-    return "<b>Bot is running... 🚀</b>"
+    return render_template('index.html')
 
 @app.route('/submit', methods=['POST'])
 def receive_link():
@@ -22,7 +22,7 @@ def receive_link():
         return jsonify({'status': 'error', 'msg': 'User ID missing'})
 
     if ("youtube.com" in url or "youtu.be" in url) and MAINTENANCE_STATUS['youtube']:
-        return jsonify({'status': 'maintenance', 'msg': 'يوتيوب في الصيانة حالياً ⚠️'})
+        return jsonify({'status': 'maintenance', 'msg': 'يوتيوب في الصيانة حالياً'})
 
     Thread(target=process_url_flow, args=(user_id, url)).start()
     
@@ -61,12 +61,12 @@ BLOCKED_KEYWORDS = [
 ]
 
 SUCCESS_MSGS = [
-    "🚀 عاش! تم قفش الرابط بنجاح!",
-    "🫡 طلبك أوامر، ثواني ويكون عندك...",
-    "📦 جاري تغليف الطلب... استعد!",
-    "🔥 البوت شغال يا وحش... لحظة واحدة!",
-    "🎉 ولا يهمك، جبنالك الرابط في ثانية!",
-    "😎 انت تؤمر.. جاري التحميل..."
+    "عاش! تم قفش الرابط بنجاح!",
+    "طلبك أوامر، ثواني ويكون عندك...",
+    "جاري تغليف الطلب... استعد!",
+    "البوت شغال يا وحش... لحظة واحدة!",
+    "ولا يهمك، جبنالك الرابط في ثانية!",
+    "انت تؤمر.. جاري التحميل..."
 ]
 
 def is_safe_content(text):
@@ -89,9 +89,9 @@ def save_and_notify_admin(message):
         with open(users_file, "a") as f:
             f.write(user_id + "\n")
         if ADMIN_ID:
-            msg = (f"🚀 مستخدم جديد انضم للبوت!\n👤 الاسم: {first_name}\n"
-                   f"📧 اليوزر: @{username}\n🆔 الأيدي: `{user_id}`")
-            try: bot.send_message(ADMIN_ID, msg, parse_mode="Markdown")
+            msg = (f"مستخدم جديد انضم للبوت!\nالاسم: {first_name}\n"
+                   f"اليوزر: @{username}\nالأيدي: {user_id}")
+            try: bot.send_message(ADMIN_ID, msg)
             except: pass
         return True
     return False
@@ -267,7 +267,7 @@ def callback_query(call):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(original_url, download=True)
                 filename = ydl.prepare_filename(info)
-                caption = f"✅ "@Kma_tbot"
+                caption = f"✅ @kareemcv"
                 
                 with open(filename, 'rb') as f:
                     if mode == "audio": bot.send_audio(call.message.chat.id, f, caption=caption)
