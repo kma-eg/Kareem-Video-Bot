@@ -88,11 +88,24 @@ def save_and_notify_admin(message):
     if user_id not in users:
         with open(users_file, "a") as f:
             f.write(user_id + "\n")
+# حساب العدد الكلي بعد الإضافة
+        total_members = len(users) + 1
+        
         if ADMIN_ID:
-            msg = (f"مستخدم جديد انضم للبوت!\nالاسم: {first_name}\n"
-                   f"اليوزر: @{username}\nالأيدي: {user_id}")
-            try: bot.send_message(ADMIN_ID, msg)
-            except: pass
+            msg = (
+                f"تم دخول شخص جديد إلى البوت الخاص بك 👾\n"
+                f"-------------------------\n\n"
+                f"• معلومات العضو الجديد .\n\n"
+                f"• الاسم : {first_name}\n"
+                f"• معرف : {username}\n"
+                f"• الايدي : `{user_id}`\n"
+                f"-------------------------\n"
+                f"• عدد الأعضاء الكلي : {total_members}"
+            )
+            try:
+                bot.send_message(ADMIN_ID, msg)
+            except:
+                pass
         return True
     return False
 
@@ -105,6 +118,19 @@ def check_sub(user_id):
         if member.status in ['creator', 'administrator', 'member']: return True
     except: return True
     return False
+
+@bot.my_chat_member_handler()
+def handle_status_change(message):
+    if not ADMIN_ID: return
+    user = message.from_user
+    new_status = message.new_chat_member.status
+    old_status = message.old_chat_member.status
+    
+    if new_status == "kicked":
+        bot.send_message(ADMIN_ID, f"قام مستخدم بحظر البوت\nالاسم: {user.first_name}\nالأيدي: {user.id}")
+    elif new_status == "member" and old_status == "kicked":
+        bot.send_message(ADMIN_ID, f"قام مستخدم بإعادة استخدام البوت\nالاسم: {user.first_name}\nالأيدي: {user.id}")
+
 
 def process_url_flow(chat_id, url):
     if not is_safe_content(url):
@@ -188,7 +214,7 @@ def send_welcome(message):
 
     markup = types.InlineKeyboardMarkup()
     web_app_info = types.WebAppInfo(APP_URL)
-    markup.add(types.InlineKeyboardButton(text="📱 اضغط للتحميل (Web App)", web_app=web_app_info))
+    markup.add(types.InlineKeyboardButton(text="📱 اضغط للتحميل (App)", web_app=web_app_info))
     markup.add(types.InlineKeyboardButton("📢 قناة المطور", url="https://t.me/+8o0uI_JLmYwwZWJk"))
     
     current_user = str(message.from_user.id).strip()
@@ -285,4 +311,5 @@ def callback_query(call):
 if __name__ == "__main__":
     keep_alive()
     bot.infinity_polling()
+
 
